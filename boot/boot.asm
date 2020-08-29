@@ -1,7 +1,9 @@
 org 0x7c00
-FontSetting equ 0x17
-StackBase equ 0x7c00
 
+LOADER_SEG 0x90000;the address the loader program will be loaded
+LOADER_OFFSET 0x100
+
+;==============definition of the boot hdr of the FAT12 file system================
     jmp START
     nop
 
@@ -11,7 +13,7 @@ StackBase equ 0x7c00
     BPB_RSecNum     dw 1;Reserved sector number
     BPB_FATNum      db 2;number of FATs
     BPB_RootEntCnt  dw 0xe0;the maximum number of root directory enenity
-    BPB_TotalSector dw 40936;the total sector number
+    BPB_TotalSector dw 0xB40;the total sector number
     BPB_Media       db 0xF0;the number discribes disk's media
     BPB_SecPerFAT   dw 0x9;How many sectors in a FAT structure 
     BPB_SecPerTrac  dw 17;how many sectors on a track
@@ -26,42 +28,26 @@ StackBase equ 0x7c00
     BS_FileSysType db "FAT12---";The file system type 8 bytes
 
 
-; db 定义一个字节  dw 字word  dd 定义一个双字double word
-BootMessage:    db "Trying to boot the homo system......(actually there is nothing in it)"
-BootMessageEnd:
+    ;how many sectors a fat table have
+    FATSize equ 9
 
+    ;RootDirectorySectorsNum = (BPB_RootEntCnt * 32) / BPB_BPerSector = 14
+    ;DataSectorOffset = 1(the boot program sector) + 2 * 9(2 FAT table sectors) + RootDirectorySectorsNum = 33
+    DataSectorOffset equ 33
+
+    RootDirectorySectorsNum equ 14
+    RootDirectorySectorsOffset equ 19
+
+    FatTableOffset equ 1
+;=====================================================================================
+
+
+;=================================boot program =======================================
 START:
-    mov ax, cs
-    mov ds, ax
-    mov ss, ax
-    mov sp, StackBase
+    
+;=================================boot program=========================================
 
-    ;clear the window
-    mov ax,0x0600
-    mov bh,FontSetting
-    mov cx,0x0;(0,0)
-    mov dx,0x184f;(25,80)
-
-    int 0x10
-
-
-    ; 打印字符串"Booting..."
-    mov al, 1
-    mov bh, 0
-    mov bl, FontSetting 
-    mov cx, BPB_BPerSector - BS_OEMName
-    mov dh, 0
-    mov dl, 0
-    ; es = ds
-    push ds
-    pop es
-    mov bp, BS_OEMName
-    mov ah, 0x13
-    int 0x10
-
-    jmp $
-
-
-; times n m        n：重复定义多少次   m:定义的数据
+; fill the rest of the boot program with 0
 times 510-($-$$)   db    0
+; the boot program must be ended with 55 aa
 dw  0xaa55 
