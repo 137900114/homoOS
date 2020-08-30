@@ -67,6 +67,7 @@ START:
     mov ax, cs
     mov ds, ax
     mov ss, ax
+    mov es, ax
     mov sp, StackBase
 
     ;clear the window
@@ -81,8 +82,6 @@ START:
     xor ah,ah
     xor al,al
     int 0x13
-
-    
 
     ;read in 
     _SEARCH_FOR_LOADER_PROGRAM_LOOP_BEGIN:
@@ -115,13 +114,49 @@ START:
 
     _CHECK_LOADED_DATA:
 
+        ;check for the loaded data
+        ;currently the loaded data stored is at [es:bx] which is [0x9000:0x100]
+        
+        mov dx,16;the maximun directory number in a sector is 16
+        _LOOP_IN_A_SECTOR:
+            cmp dx,0
+            jz  _LOOP_IN_A_SECTOR_END;if the search in this sector comes to the end
+            
+            ;es = 0x9000
+            mov di,bx;di = 0x100 + i * 32
+            ;ds = 0x0000
+            mov si,LoaderFileName;*si = LoaderFileName
+            mov cl,11
+            call COMPARE_STRING
+
+            cmp ax,1
+            jz  _THE_LOADER_FILE_IS_FOUNDED
+            
+            dec dx
+            add bx,32;bx = 0x100 + i * 32
+
+            jmp _LOOP_IN_A_SECTOR
+        _LOOP_IN_A_SECTOR_END:
+
+        
         jmp _SEARCH_FOR_LOADER_PROGRAM_LOOP_BEGIN
 
+    _THE_LOADER_FILE_IS_FOUNDED:
+    ;currently we just print a string when we find the loader file
+        ;restore the es
+        push ds
+        pop  es
+        mov bp,LoaderFileIsFounded    
+        mov cx,27
+        call PRINT_STRING
+
+        jmp $
 
 ;=================================boot program=========================================
 
 ;===============================variables===========================================
-LoaderFileName: db  "LOADER BIN ",0
+LoaderFileName: db  "LOADER  BIN",0
+LoaderFileIsFounded: db "the loader file is founded!"
 iRDSectorLoop   dw  RootDirSectors;14
 iRDSectorID     dw  SectorNoOfRootDirectory;19
 
@@ -172,8 +207,8 @@ READ_SECTOR:
 ;=================================print string========================================
 ;print a string,the string lenght is [cx],while the [es:bp] point to the string
 PRINT_STRING:
-    push ds
-    pop es
+    ;push ds
+    ;pop es
 
     mov al, 1
     mov bh, 0
@@ -185,6 +220,39 @@ PRINT_STRING:
 
     ret
 ;=====================================================================================
+
+
+;==================================CMP STRING==========================
+;compare to string [ds:si] and [es:di] whose length is [cl]
+;if the two string is the same set ax to be 1 else set a 0
+    ;the regisiters in use cx,ax
+COMPARE_STRING:
+
+    _LOOP_GO_THROUGH_THE_STRING:
+        cmp cl,0
+        jz  _THE_STRING_IS_THE_SAME 
+
+        ;if a charactor is not the same as the other string the two string must be different
+        mov al,byte [si]
+        mov ah,byte [es:di]
+        cmp al,ah
+        jnz _THE_STRING_IS_NOT_THE_SAME
+
+        inc si
+        inc di
+        dec cl
+
+        jmp _LOOP_GO_THROUGH_THE_STRING
+    _THE_STRING_IS_NOT_THE_SAME:
+        mov ax,0
+        jmp _LOOP_END
+    _THE_STRING_IS_THE_SAME:
+        mov ax,1
+    _LOOP_END:
+    
+    ret
+    
+;======================================================================
 
 ; fill the rest of the boot program with 0
 times 510-($-$$)   db    0

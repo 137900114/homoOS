@@ -3,7 +3,7 @@ org 0x100
     jmp START
     nop
 
-LoaderMessage:    db "Trying to boot the homo system......(actually there is nothing in it)"
+LoaderMessage:    db "Trying to boot the homo system from loader......(actually there is nothing in it)"
 LoaderMessageEnd:
 
 FontSetting equ 0x17
