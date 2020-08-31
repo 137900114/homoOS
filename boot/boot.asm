@@ -4,8 +4,8 @@ org 0x7c00
 StackBase equ 0x7c00
 
 LOADER_SEG equ 0x9000;the address the loader program will be loaded(0x90000)
-LOADER_OFFSET equ 0x100
-FontSetting equ 0x17
+LOADER_OFFSET equ 0x200
+FontSetting equ 0x07
 ;================================================
 
 ;==============definition of the boot hdr of the FAT12 file system================
@@ -70,17 +70,8 @@ START:
     mov es, ax
     mov sp, StackBase
 
-    ;clear the window
-    mov ax,0x0600
-    mov bh,FontSetting
-    mov cx,0x0;(0,0)
-    mov dx,0x184f;(25,80)
-
-    int 0x10
-
     ;initialize the disk
-    xor ah,ah
-    xor al,al
+    xor ax,ax
     int 0x13
 
     ;read in 
@@ -115,7 +106,7 @@ START:
     _CHECK_LOADED_DATA:
 
         ;check for the loaded data
-        ;currently the loaded data stored is at [es:bx] which is [0x9000:0x100]
+        ;currently the loaded data stored is at [es:bx] which is [0x9000:0x200]
         
         mov dx,16;the maximun directory number in a sector is 16
         _LOOP_IN_A_SECTOR:
@@ -123,7 +114,7 @@ START:
             jz  _LOOP_IN_A_SECTOR_END;if the search in this sector comes to the end
             
             ;es = 0x9000
-            mov di,bx;di = 0x100 + i * 32
+            mov di,bx;di = 0x200 + i * 32
             ;ds = 0x0000
             mov si,LoaderFileName;*si = LoaderFileName
             mov cl,11
@@ -133,7 +124,7 @@ START:
             jz  _THE_LOADER_FILE_IS_FOUNDED
             
             dec dx
-            add bx,32;bx = 0x100 + i * 32
+            add bx,32;bx = 0x200 + i * 32
 
             jmp _LOOP_IN_A_SECTOR
         _LOOP_IN_A_SECTOR_END:
@@ -142,25 +133,83 @@ START:
         jmp _SEARCH_FOR_LOADER_PROGRAM_LOOP_BEGIN
 
     _THE_LOADER_FILE_IS_FOUNDED:
-    ;currently we just print a string when we find the loader file
-        ;restore the es
-        push ds
-        pop  es
-        mov bp,LoaderFileIsFounded    
-        mov cx,27
-        call PRINT_STRING
+        ;currently we just print a string when we find the loader file
+        ;how we know that the loader file's directory is loaded in [es:bx] 0x9000:0x200
+        ;currently the ds points to 0x0000
 
-        jmp $
+        ;get the begining cluster id
+        add bx,0x1A
+        mov ax,word [es:bx]
+        push ax
+        ;read from the first FAT table
+        ;es = LOADER_SEG we load the fat table into the 0x8700:0x0000
+        ;the loader program data will be loaded into the 0x9000:0x0200 later
+        mov ax,LOADER_SEG - 0x300
+        mov es,ax
+        mov bx,0
+        mov ax,1
+        mov cl,18
+        call READ_SECTOR
+
+        mov bx,LOADER_OFFSET;0x7cbc
+        _LOAD_LOADER_PROG:
+            ;current stack contains [ax],ax is the current fat index
+            ;read from the ax th cluster's sector
+            mov ax,LOADER_SEG
+            mov es,ax
+            pop ax
+            push ax
+            ;I don't know why but we need to -2 to get the right sector index
+            add ax,RootDirSectors + SectorNoOfRootDirectory - 2
+            mov cl,1
+            
+            call READ_SECTOR
+
+            mov ax,LOADER_SEG - 0x300
+            mov es,ax
+            ;currently stack contains [ax] ax contains the current fat index
+            pop  ax
+            push bx
+            ;now the stack contains [bx] bx contains loader program offset
+            mov bx,0
+            ;load fat index data from the fat table
+            ;the fat index data is stored in register ax now
+            call LOAD_FROM_FAT12_TABLE
+
+            cmp ax,0x0ff8
+            jnc _FINISH_LOADINNG_LOADER_PROG
+            cmp ax,0x0ff7
+            jz  _FAIL_TO_LOAD_LOADER_PROG
+            ;now the stack contains [bx] bx contains loader program offset
+            pop bx
+            push ax
+            ;the bx offset increases 512
+            add bx,0x200
+
+            jmp _LOAD_LOADER_PROG
+        _FAIL_TO_LOAD_LOADER_PROG:
+            jmp $
+        _FINISH_LOADINNG_LOADER_PROG:
+            ;currently we print a string
+            ;mov cx,31
+            ;mov bp,LoaderProgIsLoadedSuccessfully
+            ;mov ax,ds
+            ;mov es,ax
+            ;call PRINT_STRING
+
+
+            jmp LOADER_SEG : LOADER_OFFSET
 
 ;=================================boot program=========================================
 
 ;===============================variables===========================================
 LoaderFileName: db  "LOADER  BIN",0
-LoaderFileIsFounded: db "the loader file is founded!"
+;LoaderFileIsFounded: db "the loader file is founded!"
 iRDSectorLoop   dw  RootDirSectors;14
 iRDSectorID     dw  SectorNoOfRootDirectory;19
 
-NoLoaderFoundStr: db "ERROR:no loader program was found in the disk,the system halt"
+NoLoaderFoundStr: db "ERROR:no loader program was found"
+;LoaderProgIsLoadedSuccessfully db "loader file loaded successfully"
 ;===================================================================================
 
 ;==========================Read Sector=======================================
@@ -253,6 +302,43 @@ COMPARE_STRING:
     ret
     
 ;======================================================================
+
+;=================================LOAD FROM FAT12==================================
+;load the [ax] th fat pointer data to [ax],this function only effects register ax
+;before calling this function the fat table data should all be loaded to [es:bx]
+LOAD_FROM_FAT12_TABLE:
+    push bx
+    push dx
+    push cx
+
+    ;caculate the offset
+    mov cx,ax
+    shr ax,1
+    mov dx,3
+    mul dx
+    
+    add bx,ax
+    and cx,1
+    add bx,cx
+
+    ;get the 2 bytes contains the fat data
+    mov ax, word [es:bx]
+    
+    cmp cx,1
+    jz _ELSE_IF_THE_CX_EQUALS_1
+    _IF_THE_CX_EQUALS_0:
+        and ax,0x0fff
+        jmp _END_IF
+    _ELSE_IF_THE_CX_EQUALS_1:
+        shr ax,4
+    _END_IF:    
+
+    pop cx
+    pop dx
+    pop bx
+
+    ret
+;================================================================================
 
 ; fill the rest of the boot program with 0
 times 510-($-$$)   db    0

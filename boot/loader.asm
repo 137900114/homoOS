@@ -1,4 +1,4 @@
-org 0x100
+org 0x200
 
     jmp START
     nop
@@ -7,7 +7,7 @@ LoaderMessage:    db "Trying to boot the homo system from loader......(actually 
 LoaderMessageEnd:
 
 FontSetting equ 0x17
-StackBase equ 0x100
+StackBase equ 0x200
 
 
 START:
@@ -40,3 +40,6 @@ START:
     int 0x10
 
     jmp $
+
+
+    times 0x600 - ($ - $$) db 0xff
