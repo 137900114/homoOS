@@ -3,7 +3,7 @@ org 0x200
     jmp START
     nop
 
-LoaderMessage:    db "Trying to boot the homo system from loader......(actually there is nothing in it)"
+LoaderMessage:    db "loading the system..."
 LoaderMessageEnd:
 
 FontSetting equ 0x17
@@ -43,3 +43,11 @@ START:
 
 
     times 0x600 - ($ - $$) db 0xff
+
+
+;print a string point to [es:bp] the size of the string is especified
+;by cx
+PRINT_STRING:
+
+    
+    ret

@@ -1,1 +1,0 @@
-nasm ..\boot\loader.asm -o ..\bin\loader.bin
