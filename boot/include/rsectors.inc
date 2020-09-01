@@ -1,5 +1,10 @@
+%ifndef __rsectors.inc__
+%define __rsectors.inc__
+
 
 %ifndef BootProgramFile
+    [section .data]
+    %include "fat12header.inc"
     [section .text]
 %endif
 ;==========================Read Sector=======================================
@@ -80,3 +85,5 @@ LOAD_FROM_FAT12_TABLE:
 
     ret
 ;================================================================================
+
+%endif

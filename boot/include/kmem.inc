@@ -1,3 +1,6 @@
+%ifndef __kmem.inc__
+%define __kmem.inc__
+
 ;defines parameters discribes memory origanization in the system
 
 ;user memory offset,the user memory starts at 1Mb's memory space
@@ -18,4 +21,4 @@ KernelProgramSize       equ LoaderProgramAbusolute - KernelProgramAbusolute
 
 ;boot 
 
-
+%endif

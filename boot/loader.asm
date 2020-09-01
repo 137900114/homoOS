@@ -30,6 +30,8 @@ StackBase equ LoaderProgramOffset
 ;KernelProgramSeg equ 0x7000
 ;========================================================
 
+;load ReedSector function into the file
+%include "rsectors.inc"
 
 ;===============print string===================
 ;print a string ,which the [es:bp] points to. the size of the string is specified
@@ -128,9 +130,16 @@ _QUERY_MEMORY_LAYOUT_SUCCESS:
 
     call PRINT_STRING
 
-
-    ;now the memory descriptor structure is stored at0x9000:0x0
+    ;now the memory descriptor structure is stored in MemCheckDescriptorBuffer
     
+    
+    ;now trying to load kernel.bin file into memory
+    ;initialize the disk
+    xor ax,ax
+    int 0x13
+
+    
+
     jmp $
 ;section text ends
 ;===============main function==================
@@ -138,6 +147,7 @@ _QUERY_MEMORY_LAYOUT_SUCCESS:
 ;=============memory information==============
 [section .data]
 ;data information used in 16bit real mode
+KernelProgramName  db "KERNEL  BIN"
 
 MemoryDescriptorStructureNum dd 0
 MemorySize                   dd 0
