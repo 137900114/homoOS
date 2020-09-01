@@ -3,7 +3,6 @@
 
 
 %ifndef BootProgramFile
-    [section .data]
     %include "fat12header.inc"
     [section .text]
 %endif

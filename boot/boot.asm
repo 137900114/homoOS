@@ -11,6 +11,9 @@ FontSetting equ 0x07
 ;================================================
 
 ;==============definition of the boot hdr of the FAT12 file system================
+
+    jmp short START
+    nop
 %include "fat12header.inc"
 ;=====================================================================================
 
@@ -86,8 +89,7 @@ START:
         jmp _SEARCH_FOR_LOADER_PROGRAM_LOOP_BEGIN
 
     _THE_LOADER_FILE_IS_FOUNDED:
-        ;currently we just print a string when we find the loader file
-        ;how we know that the loader file's directory is loaded in [es:bx] 0x9000:0x200
+        ;now we know that the loader file's directory is loaded in [es:bx] 0x9000:0x200
         ;currently the ds points to 0x0000
 
         ;get the begining cluster id
@@ -187,33 +189,8 @@ PRINT_STRING:
 ;==================================CMP STRING==========================
 ;compare to string [ds:si] and [es:di] whose length is [cl]
 ;if the two string is the same set ax to be 1 else set a 0
-    ;the regisiters in use cx,ax
-COMPARE_STRING:
-
-    _LOOP_GO_THROUGH_THE_STRING:
-        cmp cl,0
-        jz  _THE_STRING_IS_THE_SAME 
-
-        ;if a charactor is not the same as the other string the two string must be different
-        mov al,byte [si]
-        mov ah,byte [es:di]
-        cmp al,ah
-        jnz _THE_STRING_IS_NOT_THE_SAME
-
-        inc si
-        inc di
-        dec cl
-
-        jmp _LOOP_GO_THROUGH_THE_STRING
-    _THE_STRING_IS_NOT_THE_SAME:
-        mov ax,0
-        jmp _LOOP_END
-    _THE_STRING_IS_THE_SAME:
-        mov ax,1
-    _LOOP_END:
-    
-    ret
-    
+;the regisiters in use cx,ax
+%include "strcmp.inc"
 ;======================================================================
 
 %include "rsectors.inc"

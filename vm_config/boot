@@ -33,4 +33,4 @@ mouse: enabled=0
 keyboard: keymap=/usr/share/bochs/keymaps/x11-pc-us.map
 
 # enable GUI debugger
-#display_library: x, options= gui_debug
+display_library: x, options= gui_debug
