@@ -427,6 +427,8 @@ PROTECT32_MODE_CODE_START:
 
     call PRINT_STRING32
 
+    call CALCULATE_MEMORY_SIZE
+    
     jmp $
 ;========================================================
 
@@ -459,8 +461,9 @@ PRINT_STRING32:
         inc eax
         
         inc ebx
-        dec ecx
-        jmp _PRINT_STRING32_LOOP
+        ;dec ecx
+        ;jmp _PRINT_STRING32_LOOP
+        loop _PRINT_STRING32_LOOP
     _PRINT_STRING32_LOOP_END:
 
     mov al,byte [PrintStringRowNumber + LoaderProgramAbusolute]
@@ -475,22 +478,85 @@ PRINT_STRING32:
 ;=======================================================
 
 
+;=======================================================
+;calculate the memory size in the system
+;the result height 32 bits will be stored in ebx
+;the size will be stored in eax
+;this function should be compatible with c declaration
+;so that c programs can call it 
+[section .cdecl]
+[bits 32]
+CALCULATE_MEMORY_SIZE:
+    ;the ebx - 4 stores the 
+    push ebp
+    mov ebp,esp
+    
+    sub esp,4
+
+    push edi
+    push ecx
+    push ebx
+
+    mov dword [ebp - 4],0
+    mov edi,MemCheckDescriptorBuffer32
+    mov ecx,dword [MemoryDescriptorStructureNum32]
+
+    .WHILE_edi_nequal_0:
+        cmp ecx,0
+        jz  .Loop_End
+
+        mov ebx,edi
+        add ebx,16
+        cmp dword [ebx],0x1
+        jnz .end_if
+
+        .if_the_memory_segment_can_be_used:
+        sub ebx,16
+        mov eax,dword [ebx]
+        add ebx,8
+        add eax,dword [ebx]
+
+        cmp eax,dword [ebp - 4]
+        jb .end_if
+        mov dword [ebp - 4],eax
+        .end_if:
+
+        add edi,20
+        loop .WHILE_edi_nequal_0
+    .Loop_End:
+
+    mov eax,[ebp - 4];the size of the memory will be stored and return by eax
+
+    pop ebx
+    pop ecx
+    pop edi
+
+    add esp,4
+    pop ebp
+
+    ret
+;=======================================================
+
+
 ;=============32 bit mode data==========================
 [section .data32]
 ;data information used in 16bit real mode
 KernelFileName  db "KERNEL  BIN"
 
 MemoryDescriptorStructureNum dd 0
+MemoryDescriptorStructureNum32 equ MemoryDescriptorStructureNum + LoaderProgramAbusolute
 MemorySize                   dd 0
+MemorySize32 equ MemorySize + LoaderProgramAbusolute
     
 MemCheckDescriptorBuffer times 256 db 0
+MemCheckDescriptorBuffer32 equ MemCheckDescriptorBuffer + LoaderProgramAbusolute
 
 
 Stack32DataBuffer : times 0x100 db 0
 StackBase32 equ Stack32DataBuffer + 0x100 + LoaderProgramAbusolute;allocate a buffer in use of stack
 
 
-Boot32PMSuccessfullyStr : db "the protect mode is booted success fully!"
+Boot32PMSuccessfullyStr : db "the protect mode is booted successfully!"
 
 ;section data ends
 ;==========================================================
