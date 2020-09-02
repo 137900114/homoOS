@@ -21,6 +21,10 @@ NoKernelFoundStr           : db "ERROR:no kernel program file is founded in the 
 LoadKernelSuccessfullyStr  : db "the kernel has been loaded to 0x70000 successfully"
 StartLoadingKernelStr      : db "start loading kernel program"
 
+KernelSizeOutOfLimitStr    : db "ERROR:the kernel program's size is out of the system's limitation(0x20000)"
+
+Booting32ProtectModeStr    : db "trying to switch the system to 32 bit protect mode"
+
 ;the variable used by print string function 
 ;every time system print a string this variable will 
 ;increase 1
@@ -32,11 +36,38 @@ iRDSectorID     dw  SectorNoOfRootDirectory;19
 ;section data end
 ;========================================================
 
+
+;========================================================
+;32bit cpu gdt definition 
+;prepare for switch from 16bit realmode to 32bit protected mode
+;gbt describes the priority of the memory segment in order to protect
+;system from unexpected memory accessment 
+
+%include "protect32.inc";import the helper definitions
+
+[section .gdt]
+GDT_DUMMY   : Descriptor         0,         0,                 0;dummy gdt table act help the system locate the table
+GDT_CODE    : Descriptor         0,   0xfffff,DA_C   | DA_LIMIT_4K | DA_32
+GDT_DATA    : Descriptor         0,   0xfffff,DA_DRW | DA_LIMIT_4K | DA_32
+GDT_VIDEO   : Descriptor   0xb8000,   0xfffff,DA_DRW | DA_DPL3
+
+GDT_PTR : dw $ - GDT_DUMMY - 1  ;range of the gdt table
+          dd GDT_DUMMY + LoaderProgramAbusolute;the pointer point to the gdt table start
+
+;selectors that help us select the target memory segment
+SelectorCode  equ GDT_CODE - GDT_DUMMY
+SelectorData  equ GDT_DATA - GDT_DUMMY
+SelectorVideo equ GDT_VIDEO - GDT_DUMMY 
+;========================================================
+
 ;========================================================
 ;macro defines in this system
 %include "kmem.inc"
 
 FontSetting equ 0x17
+
+;in 32 bit mode we print green words
+FontSetting32 equ 0x12
 StackBase equ LoaderProgramOffset
 ;========================================================
 
@@ -79,8 +110,10 @@ PRINT_STRING:
 ;========================================================
 
 ;================main function===========================
+;16 bit function
 [section .text]
 START:
+
     mov ax, cs
     mov ds, ax
     mov ss, ax
@@ -175,7 +208,7 @@ _QUERY_MEMORY_LAYOUT_SUCCESS:
     xor ax,ax
     int 0x13
 
-    _SEARCH_FOR_LOADER_PROGRAM_LOOP_BEGIN:
+    _SEARCH_FOR_LOADER_PROGRAM_LOOP_BEGIN :
         cmp word [iRDSectorLoop],0
         jz _NO_LOADER_FOUNED
 
@@ -194,7 +227,7 @@ _QUERY_MEMORY_LAYOUT_SUCCESS:
         inc word [iRDSectorID]
         
         jmp _CHECK_LOADED_DATA
-    _NO_LOADER_FOUNED:
+    _NO_LOADER_FOUNED :
         ;print the error string 
         mov cx, 51
         mov bp, NoKernelFoundStr
@@ -205,7 +238,7 @@ _QUERY_MEMORY_LAYOUT_SUCCESS:
         ;infinity loop,system halt
         jmp $
 
-    _CHECK_LOADED_DATA:
+    _CHECK_LOADED_DATA :
 
         ;check for the loaded data
         ;currently the loaded data stored is at [es:bx] which is [0x9000:0x200]
@@ -236,8 +269,30 @@ _QUERY_MEMORY_LAYOUT_SUCCESS:
 
     _THE_LOADER_FILE_IS_FOUNDED:
 
+        ;check the size of the kernel file
+        ;if the kernel file's size is out of the boundary
+        ;we print a error message and stop the system 
+        add bx,0x1c
+        mov eax, dword [es:bx];get the size
+        cmp eax,KernelProgramSize
+
+        jc _START_LOADING_KERNEL_PROGRAM;the file size check pass start loading process
+        
+        ;otherwise print a error string and stop the system
+        mov ax,ds
+        mov es,ax
+        
+        mov cx,74
+        mov bp,KernelSizeOutOfLimitStr
+
+        call PRINT_STRING
+
+        jmp $
+
+        _START_LOADING_KERNEL_PROGRAM :
+
         ;get the begining cluster id
-        add bx,0x1A
+        sub bx,2
         mov ax,word [es:bx]
         push ax
         ;read from the first FAT table
@@ -282,8 +337,26 @@ _QUERY_MEMORY_LAYOUT_SUCCESS:
             ;now the stack contains [bx] bx contains loader program offset
             pop bx
             push ax
+
+
+            ;the kernel may be a big file if the it's bigger than 0x10000 bytes 
+            ;the register bx may overflow,inorder to prevent that we will change the
+            ;register es's value.
+
+            ;this code is vaild only when the sector size is 512 bytes
+            mov ax,0xffff
+            sub ax,word [BPB_BytsPerSec]
+            cmp bx,ax
+
+            jc _GO_ON_LOADING_THE_FILE
+                mov ax,es
+                add ax,0x1000
+                mov es,ax
+
+            _GO_ON_LOADING_THE_FILE :
+
             ;the bx offset increases 512
-            add bx,0x200
+            add bx, word [BPB_BytsPerSec]
 
             jmp _LOAD_LOADER_PROG
         _FAIL_TO_LOAD_LOADER_PROG:
@@ -298,12 +371,112 @@ _QUERY_MEMORY_LAYOUT_SUCCESS:
 
     call PRINT_STRING
 
+    call KILL_DISK_MOTOR
+
+    ;start booting the 32bit protect mode
+    mov bp,Booting32ProtectModeStr
+    mov cx,50
+    call PRINT_STRING
+
+    lgdt [GDT_PTR];load gdt pointer
+
+    cli ;close the bios interrupt
+
+    ;enable A20h address bus so the cpu can access to memory higher than 0x100000 
+    in  al,0x92
+    or  al,0x2
+    out 0x92,al
+
+    ;enable 32 bit mode
+    mov eax,cr0
+    or  eax,0x1
+    mov cr0,eax
+
+    jmp SelectorCode : dword PROTECT32_MODE_CODE_START + LoaderProgramAbusolute
+
     jmp $
 ;section text ends
 ;===============main function=============================
 
-;=============memory information==========================
-[section .data]
+;=========================================================
+;32 bit code section 
+;protect 32 main function
+[section .code32]
+[bits 32]
+PROTECT32_MODE_CODE_START:
+    ;now we enter the 32 bit protect mode
+    ;initialize the segment registers
+    mov eax,SelectorData
+    mov ds,ax
+    mov es,ax
+    mov fs,ax
+    mov ss,ax
+
+    mov al,byte [PrintStringRowNumber + LoaderProgramAbusolute]
+    inc al
+    mov byte [PrintStringRowNumber + LoaderProgramAbusolute] ,al
+    
+    mov eax,StackBase32
+    mov esp,eax
+
+    mov ax,SelectorVideo
+    mov gs,ax
+
+    mov ebx,Boot32PMSuccessfullyStr
+    mov ecx,41
+
+    call PRINT_STRING32
+
+    jmp $
+;========================================================
+
+;=======================================================
+;print the string pointed by ebx,while ecx is the length of the string
+PRINT_STRING32:
+    push eax
+    push edx
+
+    ;in 32 protected mode we need to get absolute address of the data
+    add ebx,LoaderProgramAbusolute
+
+    mov eax,0
+    mov al,byte [PrintStringRowNumber + LoaderProgramAbusolute]
+    
+    ;caculate the coordinate of the string
+    mov dx,160
+    mul dx
+
+
+    _PRINT_STRING32_LOOP:
+        cmp ecx,0
+        jz  _PRINT_STRING32_LOOP_END
+
+        mov dl,byte [ebx]
+        mov byte [gs : eax],dl
+
+        inc eax
+        mov byte [gs : eax],FontSetting32
+        inc eax
+        
+        inc ebx
+        dec ecx
+        jmp _PRINT_STRING32_LOOP
+    _PRINT_STRING32_LOOP_END:
+
+    mov al,byte [PrintStringRowNumber + LoaderProgramAbusolute]
+    inc al
+    mov byte [PrintStringRowNumber + LoaderProgramAbusolute],al
+
+    pop edx
+    pop eax
+
+    ret
+    
+;=======================================================
+
+
+;=============32 bit mode data==========================
+[section .data32]
 ;data information used in 16bit real mode
 KernelFileName  db "KERNEL  BIN"
 
@@ -311,5 +484,13 @@ MemoryDescriptorStructureNum dd 0
 MemorySize                   dd 0
     
 MemCheckDescriptorBuffer times 256 db 0
+
+
+Stack32DataBuffer : times 0x100 db 0
+StackBase32 equ Stack32DataBuffer + 0x100 + LoaderProgramAbusolute;allocate a buffer in use of stack
+
+
+Boot32PMSuccessfullyStr : db "the protect mode is booted success fully!"
+
 ;section data ends
 ;==========================================================

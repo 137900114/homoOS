@@ -4,7 +4,7 @@
 ;defines parameters discribes memory origanization in the system
 
 ;user memory offset,the user memory starts at 1Mb's memory space
-UserMemoryAbusolute     equ 0x1000000
+UserMemoryAbusolute     equ 0x100000
 
 ;the loader program starts at 0x90200
 LoaderProgramSeg        equ 0x9000
