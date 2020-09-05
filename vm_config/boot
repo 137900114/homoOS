@@ -4,7 +4,7 @@
 ########################################################################
 
 # 给bochs虚拟机分配多少内存(MB)？
-megs: 256
+megs: 128
 
 # BIOS image file and VGA BIOS image file
 # romimage:file=/usr/local/share/bochs/BIOS-bochs-latest

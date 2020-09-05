@@ -427,8 +427,81 @@ PROTECT32_MODE_CODE_START:
 
     call PRINT_STRING32
 
+    ;initialize the memory page table
+    mov ebx,StartInitalizePagetableStr
+    mov ecx,40
+
+    call PRINT_STRING32
+
+    ;eax stores the memory size of the system
     call CALCULATE_MEMORY_SIZE
+
+    ;currently we assum in the pte system that the linear address = physical address
+    ;there are 1024 entinity in the page directory
+    mov ebx,eax
+    shr eax,22
+    and ebx,0x003fffff
+    cmp ebx,0
+
+    jz .THERE_IS_NO_REMAINDER
+        inc eax
+    .THERE_IS_NO_REMAINDER:
+
+    mov ecx,eax
+
+    ;check if there is remainder left behind
+    ;cmp edx,0
+    ;jz  .THERE_IS_NO_REMAINDER
+    ;    inc ecx
+    ;.THERE_IS_NO_REMAINDER:
+
+    mov ebx,PageDirectoryBase
+    ;the memory page table exists,the page table can be read and writed,the memory page belones to user
+    mov eax,PageTableBase | PG_P | PG_RW_W | PG_US_U
+    mov edx,ecx
+
+    .FILL_THE_PAGE_DIRECTORY_TABLE:
+        mov [ebx],eax
+        add eax, 4096 ;a page table's size is 1024 * 4 = 4096
+        add ebx,4
+
+        loop .FILL_THE_PAGE_DIRECTORY_TABLE
+
+    mov eax,edx
+    mov ebx,1024
+    mul ebx
     
+    mov ecx,eax
+    mov eax,0 | PG_P | PG_RW_W | PG_US_U
+    mov ebx,PageTableBase
+
+    .FILL_THE_PAGE_TABLE:
+        mov [ebx],eax
+        add eax, 4096;a page table entinity stands for 4kb
+        add ebx,4
+
+        loop .FILL_THE_PAGE_TABLE
+
+    ;let the cr3 register point to the memory page table
+    mov eax, PageDirectoryBase
+    mov cr3,eax
+
+    ;set the 31 th bit of the cr0 register to 1,which stands for enable memory page system
+    mov eax,cr0
+    or  eax,0x80000000
+    mov cr0,eax
+
+    jmp .MEMORY_PAGE_SET_UP_OK
+
+    .MEMORY_PAGE_SET_UP_OK:
+
+    nop
+    nop
+
+    mov ecx,50
+    mov ebx,PageTableInitalizedSuccessfullyStr
+    call PRINT_STRING32
+
     jmp $
 ;========================================================
 
@@ -557,6 +630,8 @@ StackBase32 equ Stack32DataBuffer + 0x100 + LoaderProgramAbusolute;allocate a bu
 
 
 Boot32PMSuccessfullyStr : db "the protect mode is booted successfully!"
+StartInitalizePagetableStr : db "start initializing the memory page table"
+PageTableInitalizedSuccessfullyStr : db "the memory page table is initialized successfully "
 
 ;section data ends
 ;==========================================================
