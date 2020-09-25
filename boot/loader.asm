@@ -610,6 +610,60 @@ CALCULATE_MEMORY_SIZE:
     ret
 ;=======================================================
 
+;================================Memory copy================================
+;copy the memory from [es:src] to [ds:dest] while the size of the memory block is size
+;void memcpy(void* es:src,void* ds:dest,int size);
+COPY_MEMORY:
+	push edi
+	push esi
+	push ecx
+	push eax
+
+	mov esi,[esp + 4 * 4]
+	mov edi,[esp + 4 * 5]
+	mov ecx,[esp + 4 * 6]
+
+	and ecx,0x3
+	push ecx
+	.copy_remained_data:
+		cmp ecx,0
+		jz .multi_of_4
+
+		mov al,byte [es : esi]
+		mov byte [edi],al
+
+		inc edi
+		inc esi
+
+		loop .copy_remained_data
+	.multi_of_4:
+
+	pop eax
+	mov ecx,[esp + 4 * 6]
+	sub ecx,eax
+
+	.copy_data_4_bytes:
+		cmp ecx,0
+		jz .end_copy_data_4_bytes
+		mov eax,dword [es:esi]
+		mov dword [ds:edi],eax
+
+		add esi,4
+		add edi,4
+
+		sub ecx,4
+		jmp .copy_data_4_bytes
+	.end_copy_data_4_bytes:
+	
+
+	pop eax
+	pop ecx
+	pop esi
+	pop edi
+
+	ret
+;===========================================================================
+
 
 ;=============32 bit mode data==========================
 [section .data32]
